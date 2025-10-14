@@ -7,8 +7,8 @@ resource "azurerm_mssql_server" "burgerbuilder_sql_server" {
   location            = azurerm_resource_group.main.location
   version             = "12.0"
 
-  administrator_login          = var.sql_admin_username
-  administrator_login_password = var.sql_admin_password
+  administrator_login          = var.db_username
+  administrator_login_password = var.db_password
 
   public_network_access_enabled = false # 👈 disables public access
 

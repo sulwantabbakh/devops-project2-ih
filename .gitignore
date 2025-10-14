@@ -21,7 +21,7 @@ yarn-error.log*
 # Temporary files
 *.tmp
 *.temp
-
+plan.out
 **/**/.terraform/
 **/**/.terraform.lock.hcl
 **/**/*.tfstate

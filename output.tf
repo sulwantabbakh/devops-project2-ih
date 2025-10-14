@@ -83,3 +83,8 @@ output "private_dns_vnet_link_id" {
   description = "The resource ID of the VNet link associated with the Private DNS zone."
   value       = azurerm_private_dns_zone_virtual_network_link.aca_dns_link.id
 }
+
+output "sql_private_fqdn" {
+  description = "The private endpoint FQDN for the SQL Server"
+  value       = azurerm_private_dns_zone.burgerbuilder_sql_dns.name
+}

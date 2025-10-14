@@ -78,17 +78,19 @@ resource "azurerm_container_app" "frontend" {
   template {
     container {
       name   = "frontend"
-      image  = "burgerbuilderacr.azurecr.io/burgerbuilder-frontend:3.0.0"
+      image  = "burgerbuilderacr.azurecr.io/burgerbuilder-frontend:latest"
       cpu    = 1.0
       memory = "2Gi"
+      env {
+        name  = "REACT_APP_API_URL"
+        value = "http://burgerbuilder-backend"
+      }
 
       env {
         name  = "VITE_API_BASE_URL"
-        value = "http://${var.cors_allowed_origins}"
+        value = var.cors_allowed_origins
       }
     }
-  min_replicas = 1
-  max_replicas = 5
     
   }
 
@@ -183,11 +185,7 @@ resource "azurerm_container_app" "backend" {
         value = var.spring_profiles_active
       }
     }
-  min_replicas = 1
-  max_replicas = 5
-
   }
-
   
 
   tags = {
