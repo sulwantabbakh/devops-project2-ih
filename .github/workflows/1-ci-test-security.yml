@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ==============================
-  # Backend: Unit Tests (Maven)
-  # ==============================
+  # ======================================================
+  # BACKEND TESTS (Spring Boot + Maven)
+  # ======================================================
   backend-test:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -19,32 +19,28 @@ jobs:
         working-directory: ./backend
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Verify Maven Installation
-        run: mvn -v
+      - name: Build & Run Tests
+        run: mvn -B clean verify
 
-      - name: Run Backend Tests
-        run: mvn clean test --batch-mode
-
-      - name: Upload Test Results
+      - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-results
           path: backend/target/surefire-reports/
 
-  # ==============================
-  # Frontend: Unit Tests (React)
-  # ==============================
+  # ======================================================
+  # FRONTEND TESTS (React + Vitest)
+  # ======================================================
   frontend-test:
     name: Frontend Tests
     runs-on: ubuntu-latest
@@ -53,8 +49,7 @@ jobs:
         working-directory: ./frontend
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -66,73 +61,64 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Frontend Tests
-        run: npm test 
+      - name: Run Frontend Tests (Vitest)
+        run: npm test
 
-      - name: Upload Test Coverage
+      - name: Upload Coverage Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: frontend-test-coverage
+          name: frontend-coverage
           path: frontend/coverage/
 
-  # ==============================
-  # Security: Vulnerability Scanning
-  # ==============================
+  # ======================================================
+  # SECURITY SCAN (Trivy)
+  # ======================================================
   security-scan:
-    name: Security Scanning
+    name: Security Scanning (Trivy)
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test]
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # --- Trivy Scan Backend ---
-      - name: Run Trivy Vulnerability Scan (Backend)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: './backend'
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-          severity: 'CRITICAL,HIGH'
+      # Download the Trivy HTML template dynamically
+      - name: Download Trivy HTML template
+        run: |
+          mkdir -p contrib
+          curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o contrib/html.tpl
 
-      # --- Trivy Scan Frontend ---
-      - name: Run Trivy Vulnerability Scan (Frontend)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: './frontend'
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-          severity: 'CRITICAL,HIGH'
+      # Run Trivy on the backend directory
+      - name: Run Trivy vulnerability scanner (Backend)
+        run: |
+          trivy fs ./backend \
+            --format template \
+            --template "@contrib/html.tpl" \
+            -o trivy-backend-report.html \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --severity CRITICAL,HIGH
 
-      # --- Optional: Save Scan Reports ---
-      - name: Save Trivy Scan Reports
-        if: always()
+      # Run Trivy on the frontend directory
+      - name: Run Trivy vulnerability scanner (Frontend)
+        run: |
+          trivy fs ./frontend \
+            --format template \
+            --template "@contrib/html.tpl" \
+            -o trivy-frontend-report.html \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --severity CRITICAL,HIGH
+
+      # Upload both reports as build artifacts
+      - name: Upload Trivy Reports
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-scan-reports
+          name: trivy-reports
           path: |
-            ./backend
-            ./frontend
+            trivy-backend-report.html
+            trivy-frontend-report.html
 
-      - name: Generate Trivy HTML Report
-        run: |
-          trivy fs ./backend --format template --template "@contrib/html.tpl" -o trivy-report.html
-      - name: Upload Trivy Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-report
-          path: trivy-report.html
-
-
-      # --- Notify Success ---
-      - name: CI Success Flag
+      - name: Notify Success
         if: success()
-        run: |
-          echo "✅ CI & Security checks passed successfully."
-          echo "CI_SUCCESS=true" >> $GITHUB_ENV
+        run: echo "✅ Security scan completed successfully."
