@@ -84,7 +84,7 @@ jobs:
 
       # 1️⃣ Install Trivy CLI on the runner
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v2
+        uses: aquasecurity/setup-trivy@0.2.3
         with:
           trivy-version: "latest"
 
