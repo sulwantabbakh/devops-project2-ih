@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ======================================================
-  # BACKEND TESTS (Spring Boot + Maven)
-  # ======================================================
+  # ===============================
+  # 🧩 Backend Tests
+  # ===============================
   backend-test:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -28,19 +28,19 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Build & Run Tests
-        run: mvn -B clean verify
+      - name: Run Tests
+        run: mvn -B test --no-transfer-progress
 
-      - name: Upload Test Reports
+      - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-test-results
           path: backend/target/surefire-reports/
 
-  # ======================================================
-  # FRONTEND TESTS (React + Vitest)
-  # ======================================================
+  # ===============================
+  # 🎨 Frontend Tests
+  # ===============================
   frontend-test:
     name: Frontend Tests
     runs-on: ubuntu-latest
@@ -61,19 +61,19 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Frontend Tests (Vitest)
+      - name: Run Tests (Vitest)
         run: npm test
 
-      - name: Upload Coverage Report
+      - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: frontend-coverage
+          name: frontend-test-results
           path: frontend/coverage/
 
-  # ======================================================
-  # SECURITY SCAN (Trivy)
-  # ======================================================
+  # ===============================
+  # 🔒 Security Scan
+  # ===============================
   security-scan:
     name: Security Scanning (Trivy)
     runs-on: ubuntu-latest
@@ -82,11 +82,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1️⃣ Install Trivy CLI on the runner
+      # 1️⃣ Install Trivy via apt
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@0.2.3
-        with:
-          trivy-version: "latest"
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
+          trivy --version
 
       # 2️⃣ Download the HTML template for report generation
       - name: Download Trivy HTML template
@@ -116,7 +121,7 @@ jobs:
             --ignore-unfixed \
             --severity CRITICAL,HIGH
 
-      # 5️⃣ Upload the HTML reports as artifacts
+      # 5️⃣ Upload the HTML reports
       - name: Upload Trivy Reports
         uses: actions/upload-artifact@v4
         with:
@@ -125,8 +130,7 @@ jobs:
             trivy-backend-report.html
             trivy-frontend-report.html
 
-      # 6️⃣ Print confirmation
+      # 6️⃣ Notify Success
       - name: Notify Success
         if: success()
         run: echo "✅ Security scan completed successfully."
-
