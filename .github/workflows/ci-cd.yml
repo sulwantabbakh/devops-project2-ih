@@ -38,12 +38,12 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - name: Setup Terraform
+      - name: Terraform Setup
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.5
 
-      - name: Terraform Init
+      - name: Initializing Terraform
         run: terraform init
         env:
           ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
@@ -53,7 +53,7 @@ jobs:
         env:
           ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
-      - name: Terraform Apply
+      - name: Applying Terraform
         run: terraform apply -auto-approve=true -lock-timeout=30s -input=false terraform.tfplan
         env:
           ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
@@ -79,23 +79,23 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Login to ACR
+      - name: ACR Login
         uses: docker/login-action@v3
         with:
           registry: burgerbuilderacr.azurecr.io
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build backend image
+      - name: Building the Backend Image
         run: |
           cd backend
           mvn clean package -DskipTests
           docker build -t $ACR_HOST/backend:latest .
 
-      - name: Push backend image
+      - name: Pushing the Backend Image
         run: docker push $ACR_HOST/backend:latest
 
-      - name: Deploy backend container app
+      - name: Deploying the backend container app
         run: |
           az containerapp update \
             --name $BACKEND_APP \
@@ -118,14 +118,14 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
 
-      - name: Login to ACR
+      - name: ACR Login
         uses: docker/login-action@v3
         with:
           registry: burgerbuilderacr.azurecr.io
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD}}
 
-      - name: Build frontend app
+      - name: Building the frontend app
         run: |
           cd frontend
           npm ci
@@ -133,15 +133,15 @@ jobs:
           cat .env
           npm run build
 
-      - name: Build frontend image
+      - name: Building the frontend image
         run: |
           cd frontend
           docker build -t $ACR_HOST/frontend:latest .
 
-      - name: Push frontend image
+      - name: Pushing the frontend image
         run: docker push $ACR_HOST/frontend:latest
 
-      - name: Deploy frontend container app
+      - name: Deploying the frontend container app
         run: |
           az containerapp update \
             --name $FRONTEND_APP \
