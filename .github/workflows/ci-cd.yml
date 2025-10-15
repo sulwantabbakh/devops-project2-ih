@@ -1,4 +1,4 @@
-name: Full Deployment (Infra + Backend + Frontend)
+name: Burger Builder - Full Deployment (Infrastructure + Backend App + Frontend App)
 
 on:
   push:
