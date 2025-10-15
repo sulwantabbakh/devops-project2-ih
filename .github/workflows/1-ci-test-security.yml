@@ -82,13 +82,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download the Trivy HTML template dynamically
+      # 1️⃣ Install Trivy CLI on the runner
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v2
+        with:
+          trivy-version: "latest"
+
+      # 2️⃣ Download the HTML template for report generation
       - name: Download Trivy HTML template
         run: |
           mkdir -p contrib
           curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o contrib/html.tpl
 
-      # Run Trivy on the backend directory
+      # 3️⃣ Run Trivy scan for Backend
       - name: Run Trivy vulnerability scanner (Backend)
         run: |
           trivy fs ./backend \
@@ -99,7 +105,7 @@ jobs:
             --ignore-unfixed \
             --severity CRITICAL,HIGH
 
-      # Run Trivy on the frontend directory
+      # 4️⃣ Run Trivy scan for Frontend
       - name: Run Trivy vulnerability scanner (Frontend)
         run: |
           trivy fs ./frontend \
@@ -110,7 +116,7 @@ jobs:
             --ignore-unfixed \
             --severity CRITICAL,HIGH
 
-      # Upload both reports as build artifacts
+      # 5️⃣ Upload the HTML reports as artifacts
       - name: Upload Trivy Reports
         uses: actions/upload-artifact@v4
         with:
@@ -119,6 +125,8 @@ jobs:
             trivy-backend-report.html
             trivy-frontend-report.html
 
+      # 6️⃣ Print confirmation
       - name: Notify Success
         if: success()
         run: echo "✅ Security scan completed successfully."
+
