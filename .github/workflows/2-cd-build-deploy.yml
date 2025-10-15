@@ -1,79 +1,128 @@
-name: 2. CD - Build, Push & Deploy to Azure
+name: 2. Build, Push & Deploy to Azure
 
 on:
-  workflow_run:
-    workflows: ["1. CI - Test & Security"]
-    types:
-      - completed
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  id-token: write    # ✅ Required for OIDC login to Azure
+  contents: read
+
+env:
+  # 🔧 Azure Configuration
+  AZURE_RESOURCE_GROUP: "burgerbuilder-rg"
+  ACR_NAME: "burgerbuilderacr"
+  ACR_LOGIN_SERVER: "burgerbuilderacr.azurecr.io"
+  FRONTEND_APP: "burgerbuilder-frontend"
+  BACKEND_APP: "burgerbuilder-backend"
+
+  # 🏷️ Image Tag (based on GitHub run number)
+  IMAGE_TAG: "prod-${{ github.run_number }}"
+
 jobs:
-  deploy:
-    name: Build, Push & Deploy
+  build-and-deploy:
+    name: Build, Push, and Deploy
     runs-on: ubuntu-latest
 
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
-    env:
-      ACR_NAME: ${{ secrets.ACR_NAME }}
-      RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
-      FRONTEND_APP: ${{ secrets.FRONTEND_APP }}
-      BACKEND_APP: ${{ secrets.BACKEND_APP }}
-      FRONTEND_IMAGE: ${{ secrets.FRONTEND_IMAGE }}
-      BACKEND_IMAGE: ${{ secrets.BACKEND_IMAGE }}
-      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDS }}
-
     steps:
-      - name: Checkout code
+      # -----------------------------
+      # Checkout Repository
+      # -----------------------------
+      - name: 📂 Checkout Code
         uses: actions/checkout@v4
 
-      # -----------------------------------
-      # Authenticate with Azure
-      # -----------------------------------
-      - name: 🔐 Azure Login
+      # -----------------------------
+      # Azure Login (OIDC)
+      # -----------------------------
+      - name: 🔐 Azure Login (OIDC)
         uses: azure/login@v2
         with:
-         client-id: ${{ secrets.AZURE_CLIENT_ID }}
-         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-         client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # -----------------------------
+      # Azure CLI Setup
+      # -----------------------------
+      - name: ⚙️ Install Azure CLI extensions
+        run: |
+          az extension add --name containerapp --yes || az extension update --name containerapp
+          az extension add --name acr --yes || az extension update --name acr
 
-      - name: Log in to ACR
+      # -----------------------------
+      # Log in to ACR
+      # -----------------------------
+      - name: 🔑 ACR Login
         run: az acr login --name $ACR_NAME
 
-      # -----------------------------------
-      # Build & Push Docker Images
-      # -----------------------------------
-      - name: Build & Push Frontend image
+      # -----------------------------
+      # Build & Push Backend Image
+      # -----------------------------
+      - name: 🏗️ Build & Push Backend
         run: |
-          docker build -t $ACR_NAME.azurecr.io/burgerbuilder-frontend:latest ./frontend
-          docker push $ACR_NAME.azurecr.io/burgerbuilder-frontend:latest
+          docker build -t $ACR_LOGIN_SERVER/burgerbuilder-backend:$IMAGE_TAG ./backend
+          docker push $ACR_LOGIN_SERVER/burgerbuilder-backend:$IMAGE_TAG
 
-      - name: Build & Push Backend image
+      # -----------------------------
+      # Build & Push Frontend Image
+      # -----------------------------
+      - name: 🏗️ Build & Push Frontend
         run: |
-          docker build -t $ACR_NAME.azurecr.io/burgerbuilder-backend:latest ./backend
-          docker push $ACR_NAME.azurecr.io/burgerbuilder-backend:latest
+          docker build -t $ACR_LOGIN_SERVER/burgerbuilder-frontend:$IMAGE_TAG ./frontend
+          docker push $ACR_LOGIN_SERVER/burgerbuilder-frontend:$IMAGE_TAG
 
-      # -----------------------------------
-      # Deploy Updated Images to ACA
-      # -----------------------------------
-      - name: Deploy Frontend to ACA
-        run: |
-          az containerapp update \
-            --name $FRONTEND_APP \
-            --resource-group $RESOURCE_GROUP \
-            --image $FRONTEND_IMAGE \
-            --query properties.latestRevisionFqdn
-
-      - name: Deploy Backend to ACA
+      # -----------------------------
+      # Deploy Backend to Container App
+      # -----------------------------
+      - name: 🚀 Deploy Backend
         run: |
           az containerapp update \
             --name $BACKEND_APP \
-            --resource-group $RESOURCE_GROUP \
-            --image $BACKEND_IMAGE \
-            --query properties.latestRevisionFqdn
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --image $ACR_LOGIN_SERVER/burgerbuilder-backend:$IMAGE_TAG \
+            --output table
 
-      - name: Deployment Success Message
-        if: success()
-        run: echo "✅ Successfully deployed both containers to Azure Container Apps!"
+      # -----------------------------
+      # Deploy Frontend to Container App
+      # -----------------------------
+      - name: 🚀 Deploy Frontend
+        run: |
+          az containerapp update \
+            --name $FRONTEND_APP \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --image $ACR_LOGIN_SERVER/burgerbuilder-frontend:$IMAGE_TAG \
+            --output table
+
+      # -----------------------------
+      # Health Checks
+      # -----------------------------
+      - name: 🩺 Backend Health Check
+        run: |
+          BACKEND_URL=$(az containerapp show -n $BACKEND_APP -g $AZURE_RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Checking backend health at https://$BACKEND_URL/actuator/health"
+          for i in {1..30}; do
+            if curl -skf "https://$BACKEND_URL/actuator/health" > /dev/null; then
+              echo "✅ Backend is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i failed. Retrying in 10s..."
+            sleep 10
+          done
+          echo "❌ Backend failed health check."
+          exit 1
+
+      - name: 🩺 Frontend Health Check
+        run: |
+          FRONTEND_URL=$(az containerapp show -n $FRONTEND_APP -g $AZURE_RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Checking frontend at https://$FRONTEND_URL"
+          for i in {1..30}; do
+            if curl -skf "https://$FRONTEND_URL" > /dev/null; then
+              echo "✅ Frontend is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i failed. Retrying in 10s..."
+            sleep 10
+          done
+          echo "❌ Frontend failed health check."
+          exit 1
